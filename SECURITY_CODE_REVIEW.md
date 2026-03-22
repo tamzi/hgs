@@ -39,11 +39,11 @@ casino_cash: 4000
 
 ---
 
-### 2. HIGH — Unsafe Parent Frame Communication (No Origin Validation)
+### 2. HIGH — Unsafe Parent Frame Integration (Same-Origin Trust Boundary / No Authentication)
 
 **Affected files:** All 12 `c2ctl.js` files and all `.htm` files with `parent.__ctlArcade*` calls.
 
-Games communicate with their parent frame using direct `parent.*` calls without any origin validation via `postMessage`. A malicious parent page could embed these games and intercept or spoof score data, session events, and share events.
+Games communicate with their parent frame using direct `parent.*` calls (not `postMessage`). This means **cross-origin embedders cannot intercept these calls** because browsers prevent cross-origin access to `window.parent` properties/functions. However, if a game is embedded by an **untrusted page on the same origin** (or if the site later migrates this integration to `postMessage` without verification), score/session/share events can be spoofed or misused.
 
 **Example (`comple/going_nuts_c2/c2ctl.js:1-5`):**
 ```javascript
@@ -63,13 +63,12 @@ $(oMain).on("start_session", function(evt) {
 });
 ```
 
-**Risk:** Score manipulation and data exfiltration if embedded within the same origin by a malicious page. Note that browsers block cross-origin `parent.*` property access, so a cross-origin embedder cannot directly read or invoke `parent.__ctlArcade*` functions. The primary risk is same-origin embedding abuse or future migration to `postMessage` without proper origin checks.
+**Risk:** Same-origin embedding abuse (or compromised same-origin pages) can spoof "trusted parent" behavior (e.g., fake score submissions or session events). This is **not a current cross-origin interception vulnerability** with the existing `parent.*` integration, but it is a real trust-boundary issue for same-origin contexts and a common pitfall if switching to `postMessage` later.
 
 **Recommendation:**
-- Replace `parent.*` calls with `window.parent.postMessage()` using a specific `targetOrigin` (not `"*"`).
-- Validate the origin of incoming messages with `event.origin` checks against an allowlist.
-- Define a typed message schema with nonce/timestamp to prevent replay attacks.
-- Add `X-Frame-Options` or `Content-Security-Policy: frame-ancestors` headers to restrict embedding to trusted domains.
+- Restrict who can embed these games using `Content-Security-Policy: frame-ancestors` (preferred) and/or `X-Frame-Options` where applicable.
+- Treat the parent as untrusted: require an explicit handshake/token (capability) before accepting score/session actions, and validate message structure/types.
+- If migrating to `window.parent.postMessage()`, use a specific `targetOrigin` (not `"*"`) and validate incoming messages with an origin allowlist (`event.origin`) plus a nonce/timestamp to mitigate replay.
 
 ---
 
@@ -88,7 +87,7 @@ $(oMain).on("start_session", function(evt) {
 
 ---
 
-### 4. MEDIUM — URL Parameter Parsing Without Sanitization
+### 4. LOW — URL Parameter Helper Is Not Robust (Defense-in-Depth)
 
 **Affected:** All games with `getParamValue()` function.
 
@@ -101,9 +100,9 @@ function getParamValue(b) {
 }
 ```
 
-The return value is never sanitized or decoded. Currently, this value is only compared to the string `"true"` and is never inserted into the DOM or forwarded to any sink, so the present XSS risk is theoretical rather than exploitable. However, if this utility is ever reused for DOM manipulation or passed to `parent.postMessage`, it could enable reflected XSS.
+The return value is not decoded or normalized. In the current codebase, usage is limited to boolean gating (e.g., `getParamValue('ctl-arcade') === "true"`) and is not inserted into the DOM or forwarded to an exploitable sink, so **this is not a current XSS vulnerability**.
 
-**Recommendation:** Apply `decodeURIComponent()` and sanitize/escape any parameter values before use. As a defense-in-depth measure, this should be addressed before the codebase grows.
+**Recommendation:** Harden the helper now to reduce future risk: apply `decodeURIComponent()` (with try/catch), provide safe defaults, and ensure any future use in DOM or messaging contexts performs appropriate escaping/validation.
 
 ---
 
@@ -206,9 +205,9 @@ Game text (UI labels, messages) is hardcoded in JavaScript constants. Only `word
 | Severity | Finding | Type |
 |----------|---------|------|
 | CRITICAL | Client-side gambling logic, no server validation | Security |
-| HIGH | Unsafe parent frame communication, no origin check | Security |
+| HIGH | Unsafe parent frame integration, same-origin trust boundary | Security |
 | HIGH | Outdated jQuery (2.0.3/2.1.1) with known CVEs | Security |
-| MEDIUM | Unsanitized URL parameter parsing | Security |
+| LOW | URL parameter helper not robust (defense-in-depth) | Security |
 | MEDIUM | Debug console.log left in production | Security |
 | MEDIUM | No Content Security Policy | Security |
 | LOW | Deprecated AppCache usage | Security |

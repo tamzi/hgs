@@ -26,7 +26,7 @@ HGS is a browser-based game marketplace where users discover, purchase, and play
 
 - Hero section with featured/promoted game
 - Game grid with thumbnail cards (screenshot, title, category badge, price)
-- Category filters: Casino, Sports, Action, Puzzle, All
+- Category filters: Casino, Sports, Action, Puzzle, Platformer, All
 - Search bar with instant filtering by game title
 - "Free to Try" vs "Premium" visual distinction on cards
 - Responsive layout — works on desktop, tablet, and mobile
@@ -185,8 +185,8 @@ HGS is a browser-based game marketplace where users discover, purchase, and play
 - **Security**:
   - HTTPS everywhere
   - Content Security Policy (CSP) — distinct policies for host app and game iframes:
-    - **Host app**: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://cdn.hgs.com; frame-src 'self' https://games.hgs.com`
-    - **Game iframes**: `default-src 'self'; script-src 'self'; frame-ancestors https://hgs.com; connect-src 'self'` (tighten `script-src` as inline scripts are refactored out)
+    - **Host app**: `default-src 'self'; script-src 'self' 'nonce-<random>'; style-src 'self' 'unsafe-inline'; img-src 'self' https://cdn.hgs.com; frame-src 'self' https://games.hgs.com` (nonces required for Next.js hydration/inline bootstrap scripts)
+    - **Game iframes**: `default-src 'self'; script-src 'self' 'unsafe-inline'; frame-ancestors https://hgs.com; connect-src 'self'` — initially allows `'unsafe-inline'` because current games rely on inline `<script>` blocks for initialization; tighten to nonce-based or remove `'unsafe-inline'` as inline scripts are refactored to external files
     - `frame-ancestors` directive to restrict which domains can embed games
   - Server-side score validation
   - Rate limiting on API endpoints
