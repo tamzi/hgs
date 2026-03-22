@@ -163,6 +163,10 @@ HGS is a browser-based game marketplace where users discover, purchase, and play
 
 - **Framework**: React or Next.js (SSR for SEO, fast page loads)
 - **Game container**: Sandboxed iframe with `postMessage` API for score reporting
+  - Strict `targetOrigin` on all `postMessage` calls (never use `"*"`)
+  - Origin allowlist validation on incoming messages via `event.origin`
+  - Typed message schema (e.g., `{ type: "score", payload: { value: number }, nonce: string, timestamp: number }`)
+  - Nonce and timestamp validation to prevent replay attacks
 - **Styling**: Tailwind CSS for rapid, responsive UI
 - **State management**: User auth state, game library, credits balance
 
@@ -180,7 +184,10 @@ HGS is a browser-based game marketplace where users discover, purchase, and play
 - **CDN**: CloudFront or Cloudflare for game assets (games are 1–17 MB each)
 - **Security**:
   - HTTPS everywhere
-  - CSP headers on game iframes
+  - Content Security Policy (CSP) — distinct policies for host app and game iframes:
+    - **Host app**: `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://cdn.hgs.com; frame-src 'self' https://games.hgs.com`
+    - **Game iframes**: `default-src 'self'; script-src 'self'; frame-ancestors https://hgs.com; connect-src 'self'` (tighten `script-src` as inline scripts are refactored out)
+    - `frame-ancestors` directive to restrict which domains can embed games
   - Server-side score validation
   - Rate limiting on API endpoints
   - Input sanitization
@@ -188,7 +195,7 @@ HGS is a browser-based game marketplace where users discover, purchase, and play
 
 ### Database Schema (Core Tables)
 
-```
+```sql
 users          — id, email, username, password_hash, avatar_url, credits_balance, created_at
 games          — id, title, slug, description, category, price_credits, thumbnail_url, game_path, is_published, created_at
 purchases      — id, user_id, game_id, credits_spent, purchased_at
@@ -242,7 +249,10 @@ user_achievements — id, user_id, achievement_id, unlocked_at
 1. **Pricing**: Should casino games cost more credits than casual games?
 2. **Free tier**: How many free games (if any) to hook users?
 3. **Subscription vs credits**: Offer both? Start with one?
-4. **Age verification**: Casino games may require age gates depending on jurisdiction — even if no real money is wagered in-game.
+4. **Age verification (Phase 1 blocker)**: Casino-themed games require age verification before launch, even if no real money is wagered in-game. This must include:
+   - Geo-gating to restrict access in jurisdictions where simulated gambling is regulated
+   - Age-gate flow (date-of-birth entry or equivalent) before accessing casino category games
+   - Legal review sign-off on compliance requirements per target market
 5. **Multiplayer**: Any plans for real-time multiplayer (e.g., 8 Ball Pool vs a friend)?
 6. **Game submission**: Open the platform to third-party developers in Phase 3, or keep it first-party only?
 7. **Mobile apps**: Wrap the web app in a PWA or native shell (Capacitor/TWA) for app store presence?

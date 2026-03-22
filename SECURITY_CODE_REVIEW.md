@@ -15,9 +15,23 @@ This repository contains 26 HTML5 browser games (13 Construct 2, 13 custom JS/Cr
 All casino/gambling game outcomes (win/loss, payouts, bet validation) are determined entirely in client-side JavaScript. Parameters like `win_occurrence`, `payout` multipliers, `min_bet`, `max_bet`, and `money` are set in plain HTML and can be trivially modified by any user via browser DevTools.
 
 **Examples:**
-- `comple/baccarat/baccarat.htm:23` — `win_occurrence: 40` controls win rate
-- `comple/red_dog/red_dog.htm:23` — `win_occurrence: 40`, payout array exposed
-- `comple/roulette_royale/roulette_royale.htm:27` — `win_occurrence: 30`, `casino_cash: 4000`
+
+In `comple/baccarat/baccarat.htm`, the game settings object exposes:
+```javascript
+win_occurrence: 40  // controls win rate — trivially editable in DevTools
+```
+
+In `comple/red_dog/red_dog.htm`, both win rate and payout arrays are client-side:
+```javascript
+win_occurrence: 40,
+payout: [1, 2, 3, 5, 10]  // payout multipliers fully exposed
+```
+
+In `comple/roulette_royale/roulette_royale.htm`, casino cash and win rate are plaintext:
+```javascript
+win_occurrence: 30,
+casino_cash: 4000
+```
 
 **Risk:** A user can set `win_occurrence: 100` or modify payout multipliers to always win. If these games are ever used with real money or rewards, this is a critical exploit.
 
@@ -49,11 +63,12 @@ $(oMain).on("start_session", function(evt) {
 });
 ```
 
-**Risk:** Clickjacking, score manipulation, and data exfiltration if embedded in a malicious iframe host.
+**Risk:** Score manipulation and data exfiltration if embedded within the same origin by a malicious page. Note that browsers block cross-origin `parent.*` property access, so a cross-origin embedder cannot directly read or invoke `parent.__ctlArcade*` functions. The primary risk is same-origin embedding abuse or future migration to `postMessage` without proper origin checks.
 
 **Recommendation:**
-- Replace `parent.*` calls with `window.parent.postMessage()` using a specific `targetOrigin`.
-- Validate the origin of incoming messages with `event.origin` checks.
+- Replace `parent.*` calls with `window.parent.postMessage()` using a specific `targetOrigin` (not `"*"`).
+- Validate the origin of incoming messages with `event.origin` checks against an allowlist.
+- Define a typed message schema with nonce/timestamp to prevent replay attacks.
 - Add `X-Frame-Options` or `Content-Security-Policy: frame-ancestors` headers to restrict embedding to trusted domains.
 
 ---
@@ -62,14 +77,14 @@ $(oMain).on("start_session", function(evt) {
 
 | Library | Version Used | Current Version | CVEs/Issues |
 |---------|-------------|-----------------|-------------|
-| jQuery | 2.0.3 (2013) | 3.7+ | XSS via `$()` selector (CVE-2015-9251, CVE-2019-11358, CVE-2020-11022, CVE-2020-11023) |
-| jQuery | 2.1.1 (2014) | 3.7+ | Same as above |
-| CreateJS | 2013.12.12 | 2.0+ | Multiple unfixed issues |
-| CreateJS | 2014.12.12 | 2.0+ | Same |
+| jQuery | 2.0.3 (2013) | 4.0.0 (Jan 2026) | XSS via `$()` selector (CVE-2015-9251, CVE-2019-11358, CVE-2020-11022, CVE-2020-11023) |
+| jQuery | 2.1.1 (2014) | 4.0.0 (Jan 2026) | Same as above |
+| CreateJS | 2013.12.12 | 1.0.0 (Sep 2017) | No longer actively maintained; multiple unfixed issues |
+| CreateJS | 2014.12.12 | 1.0.0 (Sep 2017) | Same |
 
 **Risk:** Known XSS vulnerabilities in jQuery < 3.5.0. While direct exploitation is limited in a canvas-based game, any future DOM interaction or plugin use could be exploited.
 
-**Recommendation:** Upgrade jQuery to 3.7+ and CreateJS to the latest version. Test each game for compatibility after upgrading.
+**Recommendation:** Upgrade jQuery to 4.0.0 and CreateJS to 1.0.0 (latest stable). Note that CreateJS is no longer actively maintained — consider migrating to an alternative canvas library for long-term support. Test each game for compatibility after upgrading.
 
 ---
 
@@ -86,9 +101,9 @@ function getParamValue(b) {
 }
 ```
 
-The return value is never sanitized or decoded. While currently only compared to `"true"`, if this value is ever used in DOM manipulation or passed to `parent`, it could enable reflected XSS.
+The return value is never sanitized or decoded. Currently, this value is only compared to the string `"true"` and is never inserted into the DOM or forwarded to any sink, so the present XSS risk is theoretical rather than exploitable. However, if this utility is ever reused for DOM manipulation or passed to `parent.postMessage`, it could enable reflected XSS.
 
-**Recommendation:** Apply `decodeURIComponent()` and sanitize/escape any parameter values before use.
+**Recommendation:** Apply `decodeURIComponent()` and sanitize/escape any parameter values before use. As a defense-in-depth measure, this should be addressed before the codebase grows.
 
 ---
 
@@ -118,7 +133,12 @@ None of the 26 HTML files include a `Content-Security-Policy` meta tag or header
 
 **Risk:** Without CSP, the games are vulnerable to code injection if any XSS vector is found. An attacker could load external scripts, exfiltrate data, or modify game behavior.
 
-**Recommendation:** Add CSP headers restricting `script-src` to `'self'`, and disallowing `unsafe-inline` where possible.
+**Recommendation:** Adopt a phased CSP approach:
+1. **Phase 1 (immediate):** Add a permissive CSP that reflects current code reality — allow `'self'` and `'unsafe-inline'` for `script-src` since games currently rely on inline `<script>` blocks for initialization.
+2. **Phase 2 (prerequisite refactor):** Move all inline JavaScript to external `.js` files (see Code Quality §4 below), or adopt nonce-based CSP (`script-src 'nonce-<random>'`).
+3. **Phase 3 (strict):** Once inline scripts are eliminated, tighten CSP to disallow `'unsafe-inline'` entirely.
+
+Applying a strict CSP that disallows inline scripts without first refactoring the existing inline `<script>` blocks will break game startup.
 
 ---
 
@@ -166,10 +186,12 @@ No `.eslintrc`, `.prettierrc`, or equivalent configuration exists. Code style is
 
 ### 6. Missing HTML Best Practices
 
-- Empty `<title>` tags across all games
-- No `lang` attribute on `<html>` elements
-- No `<meta charset>` using modern syntax
-- No favicon references
+Several games are missing standard HTML best practices. Note that some games already include non-empty titles, modern `<meta charset>` declarations, and favicon links — the issues below apply to a subset of games, not all 26 uniformly:
+
+- Empty or missing `<title>` tags in some games
+- No `lang` attribute on `<html>` elements (affects all games)
+- Missing `<meta charset="UTF-8">` in some games (others already have it)
+- Missing favicon references in some games
 
 ### 7. Hardcoded Text Strings
 
