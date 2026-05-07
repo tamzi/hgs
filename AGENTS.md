@@ -33,5 +33,5 @@ There are currently no lint, test, or build commands — the codebase is purely 
 
 ### Important notes
 
-- Node.js must be installed in the environment (used for `serve` static file server via `npx serve` or global install).
+- Node.js v26 must be installed in the environment (managed via nvm). Used for `serve` static file server via global install.
 - The `product.md` file describes the planned full-stack platform (React/Next.js frontend, Node.js/Python backend, PostgreSQL, Stripe) but none of that is implemented yet.
